@@ -1,8 +1,12 @@
+const os = require("os")
 const path = require("path"); // nodejs核心模块，专门用来处理路径问题
 const ESLintPlugin = require('eslint-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const CssMinimizerPlugin = require("css-minimizer-webpack-plugin");
+const TerserWebpack = require("terser-webpack-plugin")
+
+const threads = os.cpus().length // cpu核数
 
 function getStyleLoader(pre) {
     return [
@@ -67,11 +71,25 @@ module.exports = {
                 }
             },{
                 test: /\.js$/,
-                exclude: /node_modules/, // 排除文件中的js文件
-                loader: 'babel-loader',
-                options: {
-                    presets: ['@babel/preset-env'] // 智能预设，能够编译ES6语法
-                }
+                // exclude: /node_modules/, // 排除文件中的 node_modules 文件,其它文件都处理
+                include: path.resolve(__dirname, "../src"), // 只处理src下的文件，其它文件不处理
+                use: [
+                    {
+                        loader: "thread-loader", // 开启多进程
+                        options: {
+                            works: threads, // 进程数量
+                        }
+                    },
+                    {
+                        loader: 'babel-loader',
+                        options: {
+                            // presets: ['@babel/preset-env'], // 智能预设，能够编译ES6语法
+                            cacheDirectory: true, // 开启bebel缓存
+                            // cacheComPression: false, // 关闭缓存文件压缩
+                            plugins: ["@babel/plugin-transform-runtime"], // 减少代码体积
+                        }
+                    }
+                ]
             }
         ]
     },
@@ -85,6 +103,10 @@ module.exports = {
     plugins: [ // plugin的配置
         new ESLintPlugin({
             context: path.resolve(__dirname, "../src"), // 检测哪些文件
+            exclude: "node_modules", // 默认值
+            cache: true, // 开启缓存
+            cacheLocation: path.resolve(__dirname,'../node_modules/.cache/eslintcache'),
+            threads, // 开启多进程和设置进程数量
         }),
         new HtmlWebpackPlugin({
             // 以public/index.html文件创建新的html文件； 特点：1. 结构和原来一致；2. 自动引入打包输出的资源
@@ -94,7 +116,19 @@ module.exports = {
             filename: "static/css/main.css"
         }),
         new CssMinimizerPlugin(),
+        new TerserWebpack({
+            parallel: threads, // 开启多进程和设置进程数量
+        })
     ],
+    optimization: {
+        minimizer: [
+            new CssMinimizerPlugin(),
+            new TerserWebpack({ // 压缩JS
+                parallel: threads, // 开启多进程和设置进程数量
+            })
+        ]
+    },
     // 模式
-    mode: "production"
+    mode: "production",
+    devtool: "source-map"
 }
